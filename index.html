@@ -1,0 +1,1177 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Codex Studio — Editor web basado en VSCodium</title>
+<meta name="description" content="Editor de código en el navegador con integración de GitHub y asistencia de IA (Gemini).">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#161616">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23161616'/%3E%3Cpath d='M20 16 L44 32 L20 48' stroke='%232ec4b6' stroke-width='6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23161616'/%3E%3Cpath d='M20 16 L44 32 L20 48' stroke='%232ec4b6' stroke-width='6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-0:#111213;
+    --bg-1:#17181a;
+    --bg-2:#1e2022;
+    --bg-3:#26292c;
+    --border:#2c3033;
+    --text:#dfe3e6;
+    --text-dim:#8b9195;
+    --text-faint:#5c6266;
+    --accent:#2ec4b6;
+    --accent-dim:#1f8e83;
+    --accent-glow:rgba(46,196,182,.18);
+    --danger:#e5534b;
+    --warn:#d9a441;
+    --radius:6px;
+    --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:'Inter',system-ui,-apple-system,sans-serif;
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  html{scroll-padding-top:env(safe-area-inset-top,0px)}
+  body{
+    background:var(--bg-0);
+    color:var(--text);
+    font-family:var(--sans);
+    font-size:13.5px;
+    display:flex;
+    flex-direction:column;
+    height:100%;
+    overflow:hidden;
+  }
+  button{font-family:var(--sans);cursor:pointer}
+  input,select,textarea{font-family:var(--sans)}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:#33383b;border-radius:8px}
+  ::-webkit-scrollbar-track{background:transparent}
+
+  /* ---------- Topbar ---------- */
+  #topbar{
+    display:flex;align-items:center;gap:10px;
+    padding:8px 12px;
+    padding-top:calc(8px + env(safe-area-inset-top,0px));
+    background:var(--bg-1);
+    border-bottom:1px solid var(--border);
+    flex-shrink:0;
+    flex-wrap:wrap;
+  }
+  .brand{display:flex;align-items:center;gap:8px;font-weight:600;letter-spacing:.2px;flex-shrink:0}
+  .brand svg{flex-shrink:0}
+  .brand span{color:var(--text)}
+  .brand small{color:var(--accent);font-weight:500;font-size:11px}
+  .repo-field{
+    display:flex;align-items:center;gap:6px;
+    background:var(--bg-2);border:1px solid var(--border);
+    border-radius:var(--radius);padding:5px 8px;flex:1;min-width:180px;max-width:420px;
+  }
+  .repo-field input{
+    background:transparent;border:none;outline:none;color:var(--text);
+    width:100%;font-size:13px;
+  }
+  .repo-field input::placeholder{color:var(--text-faint)}
+  .btn{
+    display:inline-flex;align-items:center;gap:6px;
+    background:var(--bg-2);border:1px solid var(--border);color:var(--text);
+    padding:6px 11px;border-radius:var(--radius);font-size:12.5px;font-weight:500;
+    transition:background .12s,border-color .12s;white-space:nowrap;
+  }
+  .btn:hover{background:var(--bg-3);border-color:#3a3f42}
+  .btn:active{transform:translateY(1px)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#08201d;font-weight:600}
+  .btn.primary:hover{background:#39d2c3}
+  .btn.primary:disabled{opacity:.45;cursor:not-allowed}
+  .btn.ghost{background:transparent}
+  .btn.icon{padding:6px 8px}
+  .spacer{flex:1}
+  #statusDot{width:8px;height:8px;border-radius:50%;background:var(--text-faint);flex-shrink:0}
+  #statusDot.online{background:var(--accent);box-shadow:0 0 6px var(--accent-glow)}
+  #statusDot.offline{background:var(--warn)}
+  .status-label{color:var(--text-dim);font-size:11.5px}
+
+  /* ---------- Layout ---------- */
+  #main{flex:1;display:flex;min-height:0}
+  #activitybar{
+    width:48px;flex-shrink:0;background:var(--bg-1);
+    border-right:1px solid var(--border);
+    display:flex;flex-direction:column;align-items:center;padding-top:8px;gap:2px;
+  }
+  .abtn{
+    width:38px;height:38px;display:flex;align-items:center;justify-content:center;
+    background:transparent;border:none;color:var(--text-dim);border-radius:var(--radius);
+  }
+  .abtn:hover{color:var(--text);background:var(--bg-2)}
+  .abtn.active{color:var(--accent);background:var(--accent-glow)}
+  .abtn svg{width:19px;height:19px}
+
+  #sidebar{
+    width:260px;flex-shrink:0;background:var(--bg-1);
+    border-right:1px solid var(--border);
+    display:flex;flex-direction:column;min-height:0;
+  }
+  #sidebar.hidden{display:none}
+  .panel-title{
+    padding:10px 6px 6px 12px;font-size:11px;font-weight:700;letter-spacing:.4px;
+    color:var(--text-faint);flex-shrink:0;display:flex;align-items:center;
+  }
+  .panel-title .ptlabel{flex:1}
+  .panel-title .ptactions{display:flex;gap:2px}
+  .icon-sm{
+    width:24px;height:24px;display:flex;align-items:center;justify-content:center;
+    background:transparent;border:none;color:var(--text-dim);border-radius:4px;flex-shrink:0;
+  }
+  .icon-sm:hover{background:var(--bg-2);color:var(--text)}
+  .icon-sm svg{width:14px;height:14px}
+  #fileTree{overflow-y:auto;flex:1;padding-bottom:10px}
+  .node{
+    display:flex;align-items:center;gap:6px;padding:4px 6px 4px 14px;
+    color:var(--text-dim);font-size:12.5px;white-space:nowrap;user-select:none;
+    border-radius:4px;margin:0 4px;
+  }
+  .node:hover{background:var(--bg-2);color:var(--text)}
+  .node:hover .node-actions{display:flex}
+  .node.file{cursor:pointer}
+  .node.file.open{color:var(--accent)}
+  .node svg{width:14px;height:14px;flex-shrink:0;opacity:.8}
+  .node .node-label{overflow:hidden;text-overflow:ellipsis;flex:1}
+  .node .node-actions{display:none;gap:0;flex-shrink:0}
+  .empty-hint{padding:16px 14px;color:var(--text-faint);font-size:12px;line-height:1.6}
+
+  #aiPanel{display:flex;flex-direction:column;flex:1;min-height:0}
+  #aiPanel.hidden{display:none}
+  #aiLog{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:10px}
+  .ai-msg{font-size:12.5px;line-height:1.55;padding:8px 10px;border-radius:var(--radius);border:1px solid var(--border)}
+  .ai-msg.user{background:var(--bg-2);color:var(--text)}
+  .ai-msg.model{background:var(--bg-2);border-color:var(--accent-dim);color:var(--text)}
+  .ai-msg.model pre{background:var(--bg-0);padding:8px;border-radius:4px;overflow-x:auto;font-family:var(--mono);font-size:11.5px;margin:6px 0}
+  .ai-msg .insert-btn{margin-top:6px}
+  #aiInputRow{border-top:1px solid var(--border);padding:8px;flex-shrink:0}
+  #aiInputRow textarea{
+    width:100%;background:var(--bg-2);border:1px solid var(--border);color:var(--text);
+    border-radius:var(--radius);padding:7px 8px;font-size:12.5px;resize:none;height:56px;outline:none;
+  }
+  #aiInputRow textarea:focus{border-color:var(--accent-dim)}
+  #aiInputRow .row{display:flex;gap:6px;margin-top:6px}
+
+  #editorArea{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+  .tab{
+    display:flex;align-items:center;gap:8px;padding:8px 10px;font-size:12px;
+    border-right:1px solid var(--border);color:var(--text-dim);white-space:nowrap;flex-shrink:0;
+  }
+  .tab.active{color:var(--text);background:var(--bg-2);border-top:2px solid var(--accent)}
+  .tab .dot{width:6px;height:6px;border-radius:50%;background:var(--warn);display:none}
+  .tab.dirty .dot{display:block}
+  .tab .close{opacity:.6;padding:2px}
+  .tab .close:hover{opacity:1}
+  #tabsRow{display:flex;align-items:center;background:var(--bg-1);border-bottom:1px solid var(--border);flex-shrink:0}
+  #tabs{display:flex;overflow-x:auto;flex:1;min-width:0}
+  #previewToggleBtn{margin:0 6px;flex-shrink:0}
+  #previewToggleBtn.active-icon{color:var(--accent);border-color:var(--accent-dim);background:var(--accent-glow)}
+  #workArea{flex:1;display:flex;min-height:0;min-width:0}
+  #editorHost{flex:1;min-height:0;min-width:0}
+  #previewWrap{display:none;flex-direction:column;flex:1;min-height:0;min-width:0;border-left:1px solid var(--border);background:#0d0e0f}
+  #previewWrap.show{display:flex}
+  #previewToolbar{display:flex;align-items:center;gap:6px;padding:5px 10px;background:var(--bg-1);border-bottom:1px solid var(--border);color:var(--text-faint);font-size:11px;flex-shrink:0}
+  #previewLabel{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #previewFrame{flex:1;width:100%;border:none;background:#fff}
+  @media (max-width:820px){
+    #workArea.split{flex-direction:column}
+    #workArea.split #editorHost{flex:1 1 50%}
+    #workArea.split #previewWrap{flex:1 1 50%;border-left:none;border-top:1px solid var(--border)}
+  }
+  #welcomeScreen{
+    flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    color:var(--text-faint);gap:10px;text-align:center;padding:20px;
+  }
+  #welcomeScreen h2{color:var(--text-dim);font-weight:600;font-size:16px;margin:0}
+  #welcomeScreen p{font-size:12.5px;max-width:340px;line-height:1.6;margin:0}
+  #statusbar{
+    display:flex;align-items:center;gap:14px;padding:4px 12px;
+    padding-bottom:calc(4px + env(safe-area-inset-bottom,0px));
+    background:var(--accent-dim);color:#08201d;font-size:11.5px;font-weight:500;flex-shrink:0;
+  }
+  #statusbar span{opacity:.95}
+
+  /* ---------- Mobile ---------- */
+  #mobileNav{display:none}
+  @media (max-width: 820px){
+    #sidebar{
+      position:fixed;top:0;left:0;bottom:0;z-index:40;width:82vw;max-width:320px;
+      padding-top:env(safe-area-inset-top,0px);
+      box-shadow:8px 0 24px rgba(0,0,0,.4);
+    }
+    #activitybar{display:none}
+    #scrim{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:30}
+    #scrim.show{display:block}
+    .repo-field{order:3;max-width:none;flex-basis:100%}
+    #statusbar span.hide-mobile{display:none}
+  }
+
+  /* ---------- Modal ---------- */
+  .modal-backdrop{
+    position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;
+    align-items:center;justify-content:center;z-index:100;padding:16px;
+  }
+  .modal-backdrop.show{display:flex}
+  .modal{
+    background:var(--bg-1);border:1px solid var(--border);border-radius:10px;
+    width:100%;max-width:440px;padding:18px 18px 16px;
+  }
+  .modal h3{margin:0 0 4px;font-size:15px}
+  .modal p.hint{color:var(--text-faint);font-size:11.5px;margin:0 0 14px;line-height:1.5}
+  .field{margin-bottom:12px}
+  .field label{display:block;font-size:11.5px;color:var(--text-dim);margin-bottom:5px;font-weight:500}
+  .field input{
+    width:100%;background:var(--bg-2);border:1px solid var(--border);color:var(--text);
+    padding:8px 9px;border-radius:var(--radius);font-size:13px;outline:none;
+  }
+  .field input:focus{border-color:var(--accent-dim)}
+  .field .sub{color:var(--text-faint);font-size:10.5px;margin-top:4px}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+  .toast-wrap{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center;width:100%;padding:0 12px}
+  .toast{
+    background:var(--bg-3);border:1px solid var(--border);color:var(--text);
+    padding:9px 14px;border-radius:8px;font-size:12.5px;box-shadow:0 6px 18px rgba(0,0,0,.35);
+    max-width:420px;text-align:center;
+  }
+  .toast.err{border-color:var(--danger);color:#ffd7d4}
+  .toast.ok{border-color:var(--accent-dim)}
+  a{color:var(--accent)}
+
+  @media (prefers-reduced-motion:no-preference){
+    .modal{animation:pop .14s ease-out}
+    @keyframes pop{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}
+  }
+</style>
+</head>
+<body data-theme="dark">
+
+<div id="topbar">
+  <div class="brand">
+    <svg width="22" height="22" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#1e2022"/><path d="M20 16 L44 32 L20 48" stroke="#2ec4b6" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>Codex Studio</span><small>· basado en VSCodium</small>
+  </div>
+  <div class="repo-field">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.34c-2.22.48-2.69-1.07-2.69-1.07-.36-.93-.89-1.17-.89-1.17-.72-.5.06-.49.06-.49.8.06 1.22.82 1.22.82.71 1.22 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.03 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.94.29.25.54.73.54 1.48v2.2c0 .21.14.46.55.38A8 8 0 0 0 8 0Z" fill="#8b9195"/></svg>
+    <input id="repoInput" placeholder="usuario/repositorio (ej: vscodium/vscodium)">
+  </div>
+  <button class="btn" id="loadBtn">Cargar repo</button>
+  <button class="btn ghost" id="newLocalBtn">Nuevo proyecto local</button>
+  <button class="btn primary" id="commitBtn" disabled>Guardar y publicar</button>
+  <button class="btn" id="inviteBtn">Invitar colaborador</button>
+  <div class="spacer"></div>
+  <button class="btn ghost icon" id="installBtn" title="Instalar app" style="display:none">⇩</button>
+  <button class="btn ghost icon" id="settingsBtn" title="Ajustes">⚙</button>
+  <span id="statusDot" title="Estado de conexión"></span>
+</div>
+
+<div id="main">
+  <div id="scrim"></div>
+  <div id="activitybar">
+    <button class="abtn active" data-panel="files" title="Archivos">
+      <svg viewBox="0 0 16 16" fill="none"><path d="M2 2.5A1.5 1.5 0 0 1 3.5 1h3.17a1.5 1.5 0 0 1 1.06.44l1.83 1.83a.5.5 0 0 0 .35.15H12.5A1.5 1.5 0 0 1 14 5v7.5A1.5 1.5 0 0 1 12.5 14h-9A1.5 1.5 0 0 1 2 12.5v-10Z" stroke="currentColor" stroke-width="1.3"/></svg>
+    </button>
+    <button class="abtn" data-panel="ai" title="Asistente IA">
+      <svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.3" stroke="currentColor" stroke-width="1.3"/><path d="M8 5v3l2 1.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+
+  <div id="sidebar">
+    <div id="filesView">
+      <div class="panel-title">
+        <span class="ptlabel">EXPLORADOR</span>
+        <span class="ptactions">
+          <button class="icon-sm" id="newFileBtn" title="Nuevo archivo"><svg viewBox="0 0 16 16" fill="none"><path d="M4 1.5h5.5L12.5 4.5V14a.5.5 0 0 1-.5.5H4a.5.5 0 0 1-.5-.5v-12A.5.5 0 0 1 4 1.5Z" stroke="currentColor" stroke-width="1.1"/><path d="M6 9.5h4M8 7.5v4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></button>
+          <button class="icon-sm" id="newFolderBtn" title="Nueva carpeta"><svg viewBox="0 0 16 16" fill="none"><path d="M1.5 3.5A1 1 0 0 1 2.5 2.5h3l1.2 1.5h6.3a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-8.5Z" stroke="currentColor" stroke-width="1.1"/><path d="M6.5 7.8h3M8 6.3v3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></button>
+        </span>
+      </div>
+      <div id="fileTree"><div class="empty-hint">Cargá un repositorio de GitHub, o tocá "Nuevo proyecto local" para trabajar sin GitHub por ahora. En cualquiera de los dos casos podés crear archivos y carpetas con los íconos de arriba y ver el resultado con "Vista previa".</div></div>
+    </div>
+    <div id="aiPanel" class="hidden">
+      <div class="panel-title">ASISTENTE IA (GEMINI)</div>
+      <div id="aiLog"></div>
+      <div id="aiInputRow">
+        <textarea id="aiInput" placeholder="Pedile algo sobre el archivo abierto: explicar, refactorizar, generar función, corregir un bug..."></textarea>
+        <div class="row">
+          <button class="btn primary" id="aiAskBtn" style="flex:1">Preguntar</button>
+          <button class="btn ghost" id="aiClearBtn">Limpiar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="editorArea">
+    <div id="tabsRow">
+      <div id="tabs"></div>
+      <button class="btn ghost icon" id="previewToggleBtn" title="Vista previa del trabajo">👁 Vista previa</button>
+    </div>
+    <div id="workArea">
+      <div id="welcomeScreen">
+        <svg width="46" height="46" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#1e2022"/><path d="M20 16 L44 32 L20 48" stroke="#2ec4b6" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <h2>Ningún archivo abierto</h2>
+        <p>Cargá un repositorio de GitHub o empezá un proyecto local nuevo, elegí o creá un archivo desde el explorador y empezá a editar. Funciona sin conexión con lo último que hayas cargado.</p>
+      </div>
+      <div id="editorHost" style="display:none"></div>
+      <div id="previewWrap">
+        <div id="previewToolbar">
+          <span id="previewLabel">Vista previa</span>
+          <button class="icon-sm" id="previewRefreshBtn" title="Actualizar vista previa">⟳</button>
+          <button class="icon-sm" id="previewCloseBtn" title="Cerrar vista previa">✕</button>
+        </div>
+        <iframe id="previewFrame" sandbox="allow-scripts allow-forms allow-modals allow-popups allow-same-origin" title="Vista previa del trabajo"></iframe>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="statusbar">
+  <span id="sbFile">Sin archivo</span>
+  <span class="hide-mobile" id="sbRepo"></span>
+  <span class="hide-mobile" id="sbBranch"></span>
+  <div class="spacer"></div>
+  <span id="sbSync">—</span>
+</div>
+
+<!-- Settings modal -->
+<div class="modal-backdrop" id="settingsModal">
+  <div class="modal">
+    <h3>Ajustes</h3>
+    <p class="hint">Tus claves se guardan solo en este navegador (localStorage), nunca se envían a Anthropic ni a ningún servidor propio: viajan directo a GitHub y a Google desde tu dispositivo.</p>
+    <div class="field">
+      <label>Token de acceso personal de GitHub</label>
+      <input type="password" id="ghTokenInput" placeholder="ghp_...">
+      <div class="sub">Creá uno en GitHub → Settings → Developer settings → Personal access tokens, con permiso "repo".</div>
+    </div>
+    <div class="field">
+      <label>API key de Google Gemini</label>
+      <input type="password" id="geminiKeyInput" placeholder="AIza...">
+      <div class="sub">Conseguila en aistudio.google.com/apikey. Se usa para el panel de asistencia de código.</div>
+    </div>
+    <div class="field">
+      <label>Modelo de Gemini</label>
+      <input type="text" id="geminiModelInput" value="gemini-2.0-flash">
+      <div class="sub">Cambialo si Google renombra o retira este modelo.</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="settingsCancel">Cerrar</button>
+      <button class="btn primary" id="settingsSave">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Invite modal -->
+<div class="modal-backdrop" id="inviteModal">
+  <div class="modal">
+    <h3>Invitar colaborador</h3>
+    <p class="hint">Agrega a alguien como colaborador del repositorio actualmente cargado. Necesitás permisos de administrador sobre ese repositorio.</p>
+    <div class="field">
+      <label>Usuario de GitHub</label>
+      <input type="text" id="inviteUserInput" placeholder="nombre-de-usuario">
+    </div>
+    <div class="field">
+      <label>Nivel de permiso</label>
+      <select id="invitePermSelect" style="width:100%;background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:8px 9px;border-radius:6px;font-size:13px">
+        <option value="pull">Lectura (pull)</option>
+        <option value="push" selected>Escritura (push)</option>
+        <option value="admin">Administrador</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="inviteCancel">Cancelar</button>
+      <button class="btn primary" id="inviteSend">Enviar invitación</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.47.0/min/vs/loader.js"></script>
+<script>
+/* ============================================================
+   Codex Studio — editor web con integración de GitHub + IA
+   ============================================================ */
+(function(){
+  "use strict";
+
+  const $ = (s)=>document.querySelector(s);
+  const $$ = (s)=>Array.from(document.querySelectorAll(s));
+
+  // ---------- Persistent settings ----------
+  const store = {
+    get(k, d){ try{ const v = localStorage.getItem(k); return v===null? d : JSON.parse(v);}catch(e){return d;} },
+    set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){/* quota / disabled */} }
+  };
+
+  let settings = store.get('cs_settings', {ghToken:'', geminiKey:'', geminiModel:'gemini-2.0-flash'});
+
+  // ---------- Toasts ----------
+  function toast(msg, kind){
+    const wrap = $('#toastWrap');
+    const el = document.createElement('div');
+    el.className = 'toast' + (kind ? ' '+kind : '');
+    el.textContent = msg;
+    wrap.appendChild(el);
+    setTimeout(()=>{ el.style.opacity='0'; el.style.transition='opacity .3s'; setTimeout(()=>el.remove(),320); }, 3600);
+  }
+
+  // ---------- Online/offline ----------
+  function refreshOnlineStatus(){
+    const dot = $('#statusDot');
+    const online = navigator.onLine;
+    dot.classList.toggle('online', online);
+    dot.classList.toggle('offline', !online);
+    dot.title = online ? 'En línea' : 'Sin conexión — trabajando con datos guardados localmente';
+    const pending = (openTabs.filter(t=>t.dirty).length) + pendingDeletions.length;
+    $('#sbSync').textContent = online ? (pending ? pending+' cambio(s) sin publicar' : 'Sincronizado') : 'Sin conexión';
+  }
+  window.addEventListener('online', ()=>{ refreshOnlineStatus(); toast('Conexión recuperada. Podés publicar tus cambios.', 'ok'); });
+  window.addEventListener('offline', ()=>{ refreshOnlineStatus(); toast('Sin conexión. Podés seguir editando; los cambios se guardan localmente.'); });
+
+  // ---------- App state ----------
+  let currentRepo = null;     // {owner, name, branch, sha}
+  let fileTree = [];          // flat list from git tree
+  let fileCache = {};         // path -> {content, sha, encoding}
+  let openTabs = [];          // [{path, dirty}]
+  let activePath = null;
+  let pendingDeletions = [];  // [{path, sha}] files to delete from GitHub on next publish
+  let editor = null;
+  let monacoReady = false;
+
+  function repoKey(){
+    if(!currentRepo) return null;
+    return currentRepo.local ? `local:${currentRepo.name}` : `${currentRepo.owner}/${currentRepo.name}#${currentRepo.branch}`;
+  }
+  function cacheStorageKey(){ return 'cs_cache_' + repoKey(); }
+  function publishActionLabel(){ return (currentRepo && currentRepo.local) ? 'Publicar en GitHub' : 'Guardar y publicar'; }
+
+  function persistRepoCache(){
+    if(!currentRepo) return;
+    store.set(cacheStorageKey(), { tree: fileTree, files: fileCache, repo: currentRepo, deletions: pendingDeletions, savedAt: Date.now() });
+    store.set('cs_last_repo', repoKey());
+  }
+
+  function loadRepoCacheFromDisk(key){
+    return store.get('cs_cache_' + key, null);
+  }
+
+  // ---------- Monaco setup ----------
+  require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.47.0/min/vs' } });
+  require(['vs/editor/editor.main'], function(){
+    monacoReady = true;
+    monaco.editor.defineTheme('codex-dark', {
+      base:'vs-dark', inherit:true,
+      rules:[],
+      colors:{
+        'editor.background':'#17181a',
+        'editor.lineHighlightBackground':'#1e2022',
+        'editorLineNumber.foreground':'#4a5054',
+        'editorCursor.foreground':'#2ec4b6'
+      }
+    });
+    editor = monaco.editor.create($('#editorHost'), {
+      value:'', language:'plaintext', theme:'codex-dark',
+      automaticLayout:true, fontFamily:"'JetBrains Mono', monospace", fontSize:13,
+      minimap:{ enabled: window.innerWidth > 900 }, scrollBeyondLastLine:false, smoothScrolling:true
+    });
+    editor.onDidChangeModelContent(()=>{
+      if(!activePath) return;
+      const tab = openTabs.find(t=>t.path===activePath);
+      if(tab && !tab.dirty){ tab.dirty = true; renderTabs(); }
+      schedulePreviewUpdate();
+    });
+    // Restore last session if offline / on load
+    tryRestoreLastRepo();
+  });
+
+  function langForPath(path){
+    const ext = path.split('.').pop().toLowerCase();
+    const map = {js:'javascript',jsx:'javascript',ts:'typescript',tsx:'typescript',json:'json',
+      html:'html',css:'css',scss:'scss',md:'markdown',py:'python',java:'java',c:'c',cpp:'cpp',
+      h:'cpp',cs:'csharp',go:'go',rs:'rust',rb:'ruby',php:'php',sh:'shell',yml:'yaml',yaml:'yaml',
+      xml:'xml',sql:'sql',swift:'swift',kt:'kotlin'};
+    return map[ext] || 'plaintext';
+  }
+
+  // ---------- GitHub API ----------
+  const GH = 'https://api.github.com';
+  function ghHeaders(){
+    const h = {'Accept':'application/vnd.github+json'};
+    if(settings.ghToken) h['Authorization'] = 'Bearer ' + settings.ghToken;
+    return h;
+  }
+  async function ghFetch(path, opts){
+    opts = opts || {};
+    opts.headers = Object.assign({}, ghHeaders(), opts.headers||{});
+    const res = await fetch(GH+path, opts);
+    if(!res.ok){
+      let body = '';
+      try{ body = (await res.json()).message; }catch(e){}
+      throw new Error(`GitHub ${res.status}: ${body || res.statusText}`);
+    }
+    return res.status === 204 ? null : res.json();
+  }
+
+  async function loadRepo(owner, name){
+    if(!navigator.onLine){
+      const cached = loadRepoCacheFromDisk(`${owner}/${name}#`);
+      toast('Sin conexión: no se puede consultar la rama en GitHub. Probá abrir el último repo cargado.', 'err');
+      return;
+    }
+    toast('Cargando repositorio…');
+    const info = await ghFetch(`/repos/${owner}/${name}`);
+    const branch = info.default_branch;
+    const branchInfo = await ghFetch(`/repos/${owner}/${name}/branches/${branch}`);
+    const treeSha = branchInfo.commit.commit.tree.sha;
+    const tree = await ghFetch(`/repos/${owner}/${name}/git/trees/${treeSha}?recursive=1`);
+    currentRepo = { owner, name, branch, sha: branchInfo.commit.sha, canPush: !!info.permissions && info.permissions.push };
+    fileTree = tree.tree.filter(n=>n.type==='blob').sort((a,b)=>a.path.localeCompare(b.path));
+    fileCache = {};
+    openTabs = []; activePath = null; pendingDeletions = [];
+    renderFileTree(); renderTabs(); showWelcome();
+    $('#sbRepo').textContent = `${owner}/${name}`;
+    $('#sbBranch').textContent = branch;
+    $('#commitBtn').disabled = false;
+    $('#commitBtn').textContent = 'Guardar y publicar';
+    persistRepoCache();
+    toast(`Repositorio ${owner}/${name} cargado (${fileTree.length} archivos).`, 'ok');
+    if(!info.permissions || !info.permissions.push){
+      toast('Nota: no tenés permiso de escritura en este repo. Podés navegar y editar localmente, pero "Guardar y publicar" fallará salvo que te agreguen como colaborador.', 'err');
+    }
+  }
+
+  function tryRestoreLastRepo(){
+    const key = store.get('cs_last_repo', null);
+    if(!key) return;
+    const cached = loadRepoCacheFromDisk(key);
+    if(!cached) return;
+    currentRepo = cached.repo; fileTree = cached.tree; fileCache = cached.files; pendingDeletions = cached.deletions || [];
+    if(currentRepo.local){
+      $('#repoInput').value = '';
+      $('#sbRepo').textContent = `Local: ${currentRepo.name}`;
+      $('#sbBranch').textContent = 'sin publicar';
+      $('#commitBtn').textContent = 'Publicar en GitHub';
+      toast('Se restauró tu último proyecto local guardado en este navegador.');
+    } else {
+      $('#repoInput').value = `${currentRepo.owner}/${currentRepo.name}`;
+      $('#sbRepo').textContent = `${currentRepo.owner}/${currentRepo.name}`;
+      $('#sbBranch').textContent = currentRepo.branch;
+      $('#commitBtn').textContent = 'Guardar y publicar';
+      toast('Se restauró el último repositorio guardado localmente (modo offline).');
+    }
+    $('#commitBtn').disabled = false;
+    renderFileTree();
+  }
+
+  // ---------- Local-only projects (no GitHub needed) ----------
+  function startLocalProject(){
+    const name = prompt('Nombre para este proyecto local (solo para identificarlo en este navegador):', 'mi-proyecto');
+    if(!name) return;
+    const safe = name.trim().replace(/[^a-zA-Z0-9._-]+/g,'-').slice(0,60) || 'proyecto-local';
+    currentRepo = { local:true, owner:null, name: safe, branch:'local', canPush:false };
+    fileTree = []; fileCache = {}; openTabs = []; activePath = null; pendingDeletions = [];
+    renderFileTree(); renderTabs(); showWelcome();
+    $('#repoInput').value = '';
+    $('#sbRepo').textContent = `Local: ${safe}`;
+    $('#sbBranch').textContent = 'sin publicar';
+    $('#commitBtn').disabled = false;
+    $('#commitBtn').textContent = 'Publicar en GitHub';
+    persistRepoCache();
+    toast(`Proyecto local "${safe}" creado. Usá los íconos del explorador para agregar archivos y carpetas. Cuando quieras, tocá "Publicar en GitHub" para subirlo como repositorio nuevo.`, 'ok');
+  }
+  $('#newLocalBtn').addEventListener('click', startLocalProject);
+
+  async function publishLocalProjectToGithub(){
+    if(!settings.ghToken){ toast('Configurá tu token de GitHub en Ajustes primero.', 'err'); openSettings(); return; }
+    if(!navigator.onLine){ toast('Necesitás conexión para publicar en GitHub.', 'err'); return; }
+    captureActiveEditorContent();
+    if(!fileTree.length){ toast('Tu proyecto local todavía no tiene archivos. Creá al menos uno con el ícono de "Nuevo archivo".', 'err'); return; }
+    const repoName = prompt('Nombre del nuevo repositorio en GitHub:', currentRepo.name);
+    if(!repoName) return;
+    const isPublic = confirm('¿Hacerlo público? Aceptar = público. Cancelar = privado.');
+    $('#commitBtn').disabled = true;
+    toast('Creando repositorio en GitHub…');
+    try{
+      const repo = await ghFetch('/user/repos', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ name: repoName, private: !isPublic })
+      });
+      const owner = repo.owner.login;
+      const branch = repo.default_branch || 'main';
+      const localFiles = fileTree.slice();
+      currentRepo = { owner, name: repoName, branch, canPush:true, local:false };
+      let ok = 0, fail = 0;
+      for(const f of localFiles){
+        try{
+          const content = fileCache[f.path] ? fileCache[f.path].content : '';
+          await commitFile(f.path, content, `Publica ${f.path} desde Codex Studio`);
+          ok++;
+        }catch(e){ fail++; toast(`Error subiendo ${f.path}: ${e.message}`, 'err'); }
+      }
+      openTabs.forEach(t=>t.dirty=false);
+      pendingDeletions = [];
+      $('#sbRepo').textContent = `${owner}/${repoName}`;
+      $('#sbBranch').textContent = branch;
+      $('#commitBtn').textContent = 'Guardar y publicar';
+      renderTabs(); persistRepoCache();
+      toast(`Proyecto publicado en github.com/${owner}/${repoName} (${ok} archivo(s)).`, 'ok');
+    }catch(e){
+      toast('No se pudo crear el repositorio: ' + e.message, 'err');
+    }
+    $('#commitBtn').disabled = false;
+  }
+
+  async function fetchFileContent(path){
+    if(fileCache[path]) return fileCache[path];
+    if(!navigator.onLine){ throw new Error('Sin conexión y este archivo no está en caché local.'); }
+    const data = await ghFetch(`/repos/${currentRepo.owner}/${currentRepo.name}/contents/${encodeURIComponent(path).replace(/%2F/g,'/')}?ref=${currentRepo.branch}`);
+    const content = data.encoding === 'base64' ? b64DecodeUnicode(data.content) : data.content;
+    fileCache[path] = { content, sha: data.sha };
+    persistRepoCache();
+    return fileCache[path];
+  }
+
+  function b64DecodeUnicode(str){
+    return decodeURIComponent(atob(str.replace(/\n/g,'')).split('').map(c=>'%'+('00'+c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+  }
+  function b64EncodeUnicode(str){
+    return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (m,p)=>String.fromCharCode('0x'+p)));
+  }
+
+  async function commitFile(path, content, message){
+    const existing = fileCache[path];
+    const body = {
+      message: message || `Actualiza ${path} desde Codex Studio`,
+      content: b64EncodeUnicode(content),
+      branch: currentRepo.branch
+    };
+    if(existing && existing.sha) body.sha = existing.sha;
+    const res = await ghFetch(`/repos/${currentRepo.owner}/${currentRepo.name}/contents/${encodeURIComponent(path).replace(/%2F/g,'/')}`, {
+      method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    fileCache[path] = { content, sha: res.content.sha };
+    return res;
+  }
+
+  async function deleteFileOnGithub(path, sha, message){
+    return ghFetch(`/repos/${currentRepo.owner}/${currentRepo.name}/contents/${encodeURIComponent(path).replace(/%2F/g,'/')}`, {
+      method:'DELETE', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ message: message || `Elimina ${path} desde Codex Studio`, sha, branch: currentRepo.branch })
+    });
+  }
+
+  async function inviteCollaborator(username, permission){
+    return ghFetch(`/repos/${currentRepo.owner}/${currentRepo.name}/collaborators/${encodeURIComponent(username)}`, {
+      method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ permission })
+    });
+  }
+
+  // ---------- File tree rendering ----------
+  function buildTreeStructure(){
+    const root = {};
+    fileTree.forEach(f=>{
+      const parts = f.path.split('/');
+      let node = root;
+      parts.forEach((part,i)=>{
+        if(i === parts.length-1){ node[part] = { __file:true, path:f.path }; }
+        else { node[part] = node[part] || {}; node = node[part]; }
+      });
+    });
+    return root;
+  }
+  function renderFileTree(){
+    const host = $('#fileTree');
+    if(!fileTree.length){ host.innerHTML = '<div class="empty-hint">Cargá un repositorio de GitHub arriba para ver sus archivos acá. También podés trabajar sin conexión con el último repo abierto.</div>'; return; }
+    const struct = buildTreeStructure();
+    host.innerHTML = '';
+    host.appendChild(renderNode(struct, 0));
+  }
+  function renderNode(obj, depth){
+    const frag = document.createDocumentFragment();
+    const keys = Object.keys(obj).sort((a,b)=>{
+      const af = obj[a].__file, bf = obj[b].__file;
+      if(af===bf) return a.localeCompare(b);
+      return af ? 1 : -1;
+    });
+    keys.forEach(key=>{
+      const val = obj[key];
+      if(val.__file){
+        const el = document.createElement('div');
+        el.className = 'node file' + (val.path===activePath ? ' open':'');
+        el.style.paddingLeft = (14+depth*13)+'px';
+        el.innerHTML = fileIcon()+`<span class="node-label">${key}</span>`+
+          `<span class="node-actions">`+
+          `<button class="icon-sm rename-btn" title="Renombrar">${pencilIcon()}</button>`+
+          `<button class="icon-sm delete-btn" title="Eliminar">${trashIcon()}</button>`+
+          `</span>`;
+        el.addEventListener('click', ()=>openFile(val.path));
+        el.querySelector('.rename-btn').addEventListener('click', (e)=>{ e.stopPropagation(); renameFile(val.path); });
+        el.querySelector('.delete-btn').addEventListener('click', (e)=>{ e.stopPropagation(); deleteFile(val.path); });
+        frag.appendChild(el);
+      } else {
+        const wrap = document.createElement('div');
+        const el = document.createElement('div');
+        el.className = 'node folder';
+        el.style.paddingLeft = (14+depth*13)+'px';
+        el.innerHTML = folderIcon()+`<span>${key}</span>`;
+        const childHost = document.createElement('div');
+        childHost.appendChild(renderNode(val, depth+1));
+        let expanded = depth < 1;
+        childHost.style.display = expanded ? '' : 'none';
+        el.addEventListener('click', ()=>{ expanded = !expanded; childHost.style.display = expanded?'':'none'; });
+        wrap.appendChild(el); wrap.appendChild(childHost);
+        frag.appendChild(wrap);
+      }
+    });
+    return frag;
+  }
+  function fileIcon(){ return `<svg viewBox="0 0 16 16" fill="none"><path d="M4 1.5h5.5L12.5 4.5V14a.5.5 0 0 1-.5.5H4a.5.5 0 0 1-.5-.5v-12A.5.5 0 0 1 4 1.5Z" stroke="currentColor" stroke-width="1.1"/></svg>`; }
+  function folderIcon(){ return `<svg viewBox="0 0 16 16" fill="none"><path d="M1.5 3.5A1 1 0 0 1 2.5 2.5h3l1.2 1.5h6.3a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-8.5Z" stroke="currentColor" stroke-width="1.1"/></svg>`; }
+  function pencilIcon(){ return `<svg viewBox="0 0 16 16" fill="none"><path d="M11 2.3 13.7 5 5.8 12.9l-3.1.6.6-3.1L11 2.3Z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>`; }
+  function trashIcon(){ return `<svg viewBox="0 0 16 16" fill="none"><path d="M3 4.5h10M6.3 4.5V3a1 1 0 0 1 1-1h1.4a1 1 0 0 1 1 1v1.5M4.3 4.5 5 13a1 1 0 0 0 1 .9h4a1 1 0 0 0 1-.9l.7-8.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>`; }
+
+  // ---------- Create / rename / delete files ----------
+  function normalizePath(p){ return p.trim().replace(/^\/+/,'').replace(/\/+$/,''); }
+
+  function insertIntoTree(path){
+    fileTree.push({ path, type:'blob' });
+    fileTree.sort((a,b)=>a.path.localeCompare(b.path));
+  }
+
+  function createNewFile(prefillFolder){
+    if(!currentRepo){ toast('Primero cargá un repo de GitHub o iniciá un proyecto local ("Nuevo proyecto local").', 'err'); return; }
+    let path = prompt('Ruta del nuevo archivo (ej: src/index.js):', prefillFolder ? prefillFolder+'/' : '');
+    if(!path) return;
+    path = normalizePath(path);
+    if(!path){ return; }
+    if(fileTree.find(f=>f.path===path)){ toast('Ya existe un archivo con esa ruta.', 'err'); return; }
+    insertIntoTree(path);
+    fileCache[path] = { content:'', sha:null };
+    openTabs.push({ path, dirty:true });
+    activePath = path;
+    renderFileTree(); renderTabs(); showWelcome();
+    if(monacoReady && editor){
+      editor.setValue('');
+      monaco.editor.setModelLanguage(editor.getModel(), langForPath(path));
+    }
+    $('#sbFile').textContent = path;
+    persistRepoCache();
+    schedulePreviewUpdate();
+    toast(`Archivo "${path}" creado. Tocá "${publishActionLabel()}" cuando quieras guardarlo.`, 'ok');
+  }
+
+  function createNewFolder(){
+    if(!currentRepo){ toast('Primero cargá un repo de GitHub o iniciá un proyecto local ("Nuevo proyecto local").', 'err'); return; }
+    let folder = prompt('Nombre de la nueva carpeta (ej: src/components):');
+    if(!folder) return;
+    folder = normalizePath(folder);
+    if(!folder) return;
+    const path = folder + '/.gitkeep';
+    if(fileTree.find(f=>f.path===path)){ toast('Esa carpeta ya existe.', 'err'); return; }
+    insertIntoTree(path);
+    fileCache[path] = { content:'', sha:null };
+    openTabs.push({ path, dirty:true });
+    renderFileTree(); persistRepoCache();
+    toast(`Carpeta "${folder}" creada (con un archivo .gitkeep vacío, como hace Git con carpetas nuevas). Tocá "${publishActionLabel()}" cuando quieras guardarla.`, 'ok');
+  }
+
+  function renameFile(oldPath){
+    let newPath = prompt('Nuevo nombre o ruta:', oldPath);
+    if(!newPath) return;
+    newPath = normalizePath(newPath);
+    if(!newPath || newPath === oldPath) return;
+    if(fileTree.find(f=>f.path===newPath)){ toast('Ya existe un archivo con esa ruta.', 'err'); return; }
+    const cached = fileCache[oldPath] || { content:'', sha:null };
+    fileTree = fileTree.filter(f=>f.path!==oldPath);
+    insertIntoTree(newPath);
+    fileCache[newPath] = { content: cached.content, sha:null };
+    delete fileCache[oldPath];
+    if(cached.sha){ pendingDeletions.push({ path: oldPath, sha: cached.sha }); }
+    openTabs = openTabs.map(t=> t.path===oldPath ? { path:newPath, dirty:true } : t);
+    if(activePath === oldPath) activePath = newPath;
+    renderFileTree(); renderTabs();
+    if(activePath === newPath) switchTab(newPath);
+    persistRepoCache();
+    toast(`Renombrado a "${newPath}". Tocá "${publishActionLabel()}" cuando quieras guardar el cambio.`, 'ok');
+  }
+
+  function deleteFile(path){
+    if(!confirm(`¿Eliminar "${path}"? Esta acción no se puede deshacer.`)) return;
+    const cached = fileCache[path];
+    fileTree = fileTree.filter(f=>f.path!==path);
+    if(cached && cached.sha){ pendingDeletions.push({ path, sha: cached.sha }); }
+    delete fileCache[path];
+    openTabs = openTabs.filter(t=>t.path!==path);
+    if(activePath === path){
+      activePath = openTabs.length ? openTabs[openTabs.length-1].path : null;
+      if(activePath){ switchTab(activePath); }
+      else { if(editor) editor.setValue(''); $('#sbFile').textContent = 'Sin archivo'; }
+    }
+    renderFileTree(); renderTabs(); showWelcome(); persistRepoCache();
+    schedulePreviewUpdate();
+    toast(cached && cached.sha ? 'Se eliminará de GitHub al publicar.' : 'Archivo eliminado localmente.', 'ok');
+  }
+
+  $('#newFileBtn').addEventListener('click', ()=>createNewFile());
+  $('#newFolderBtn').addEventListener('click', ()=>createNewFolder());
+
+  // ---------- Tabs / editor ----------
+  function showWelcome(){
+    $('#welcomeScreen').style.display = openTabs.length ? 'none' : 'flex';
+    $('#editorHost').style.display = openTabs.length ? '' : 'none';
+  }
+  async function openFile(path){
+    try{
+      const data = await fetchFileContent(path);
+      if(!openTabs.find(t=>t.path===path)) openTabs.push({path, dirty:false});
+      activePath = path;
+      renderTabs(); renderFileTree(); showWelcome();
+      if(monacoReady && editor){
+        const model = monaco.editor.createModel; // not used directly; reuse single model
+        editor.setValue(data.content);
+        monaco.editor.setModelLanguage(editor.getModel(), langForPath(path));
+      }
+      $('#sbFile').textContent = path;
+      schedulePreviewUpdate();
+    }catch(e){ toast(e.message, 'err'); }
+  }
+  function switchTab(path){
+    activePath = path;
+    const data = fileCache[path];
+    if(editor && data){
+      editor.setValue(data.content);
+      monaco.editor.setModelLanguage(editor.getModel(), langForPath(path));
+    }
+    $('#sbFile').textContent = path;
+    renderTabs(); renderFileTree();
+    schedulePreviewUpdate();
+  }
+  function closeTab(path, ev){
+    if(ev) ev.stopPropagation();
+    openTabs = openTabs.filter(t=>t.path!==path);
+    if(activePath===path){ activePath = openTabs.length ? openTabs[openTabs.length-1].path : null; }
+    if(activePath) switchTab(activePath); else { $('#sbFile').textContent='Sin archivo'; }
+    renderTabs(); showWelcome();
+  }
+  function renderTabs(){
+    const host = $('#tabs');
+    host.innerHTML = '';
+    openTabs.forEach(t=>{
+      const el = document.createElement('div');
+      el.className = 'tab' + (t.path===activePath?' active':'') + (t.dirty?' dirty':'');
+      const name = t.path.split('/').pop();
+      el.innerHTML = `<span class="dot"></span><span>${name}</span><span class="close">✕</span>`;
+      el.addEventListener('click', ()=>switchTab(t.path));
+      el.querySelector('.close').addEventListener('click', (e)=>closeTab(t.path,e));
+      host.appendChild(el);
+    });
+    refreshOnlineStatus();
+  }
+
+  function captureActiveEditorContent(){
+    if(activePath && editor){
+      fileCache[activePath].content = editor.getValue();
+    }
+  }
+
+  // ---------- Live preview ("¿cómo va quedando el trabajo?") ----------
+  let previewOpen = false;
+  let previewDebounceTimer = null;
+  let previewBlobUrls = [];
+  let markedLoadPromise = null;
+
+  function clearPreviewBlobUrls(){
+    previewBlobUrls.forEach(u=>{ try{ URL.revokeObjectURL(u); }catch(e){} });
+    previewBlobUrls = [];
+  }
+  function schedulePreviewUpdate(){
+    if(!previewOpen) return;
+    clearTimeout(previewDebounceTimer);
+    previewDebounceTimer = setTimeout(updatePreview, 350);
+  }
+  function mimeForPreview(path){
+    const ext = path.split('.').pop().toLowerCase();
+    const map = {css:'text/css', js:'text/javascript', mjs:'text/javascript', json:'application/json',
+      svg:'image/svg+xml', html:'text/html', xml:'application/xml'};
+    return map[ext] || 'text/plain';
+  }
+  function resolveRelativePath(baseDir, url){
+    url = url.split('#')[0].split('?')[0];
+    if(url.startsWith('/')) return url.slice(1);
+    const parts = (baseDir + url).split('/');
+    const stack = [];
+    parts.forEach(seg=>{
+      if(seg === '' || seg === '.') return;
+      if(seg === '..') stack.pop(); else stack.push(seg);
+    });
+    return stack.join('/');
+  }
+  function buildPreviewHtml(htmlSource, basePath){
+    const baseDir = basePath.includes('/') ? basePath.slice(0, basePath.lastIndexOf('/')+1) : '';
+    return htmlSource.replace(/(src|href)=(["'])([^"']+)\2/g, (m, attr, q, url)=>{
+      if(/^([a-z]+:)?\/\//i.test(url) || url.startsWith('data:') || url.startsWith('#') || url.startsWith('mailto:')) return m;
+      const resolved = resolveRelativePath(baseDir, url);
+      if(fileCache[resolved]){
+        const blob = new Blob([fileCache[resolved].content], { type: mimeForPreview(resolved) });
+        const blobUrl = URL.createObjectURL(blob);
+        previewBlobUrls.push(blobUrl);
+        return `${attr}=${q}${blobUrl}${q}`;
+      }
+      return m;
+    });
+  }
+  function emptyPreviewDoc(msg){
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:system-ui,sans-serif;color:#8b9195;background:#0d0e0f;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px;text-align:center;font-size:13px;line-height:1.6}</style></head><body>${escapeHtml(msg)}</body></html>`;
+  }
+  function ensureMarked(){
+    if(window.marked) return Promise.resolve();
+    if(markedLoadPromise) return markedLoadPromise;
+    markedLoadPromise = new Promise((resolve, reject)=>{
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/marked@12/lib/marked.umd.min.js';
+      s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+    return markedLoadPromise;
+  }
+  async function renderMarkdownPreview(mdText){
+    const frame = $('#previewFrame');
+    try{
+      await ensureMarked();
+      const html = window.marked.parse(mdText);
+      frame.srcdoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+        body{font-family:system-ui,sans-serif;color:#dfe3e6;background:#17181a;max-width:720px;margin:0 auto;padding:28px 22px;line-height:1.65}
+        h1,h2,h3{color:#fff} code{background:#1e2022;padding:2px 5px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:.9em}
+        pre{background:#1e2022;padding:12px;border-radius:6px;overflow-x:auto} pre code{background:none;padding:0}
+        a{color:#2ec4b6} img{max-width:100%} blockquote{border-left:3px solid #2ec4b6;margin:0;padding-left:14px;color:#8b9195}
+        table{border-collapse:collapse} td,th{border:1px solid #2c3033;padding:6px 10px}
+      </style></head><body>${html}</body></html>`;
+    }catch(e){
+      frame.srcdoc = emptyPreviewDoc('No se pudo cargar el renderizador de Markdown (¿estás sin conexión?).');
+    }
+  }
+  function updatePreview(){
+    const frame = $('#previewFrame');
+    const label = $('#previewLabel');
+    if(!activePath){
+      label.textContent = 'Vista previa';
+      frame.srcdoc = emptyPreviewDoc('Abrí (o creá) un archivo .html o .md para ver acá cómo va quedando tu trabajo.');
+      return;
+    }
+    captureActiveEditorContent();
+    label.textContent = 'Vista previa — ' + activePath;
+    clearPreviewBlobUrls();
+    const ext = activePath.split('.').pop().toLowerCase();
+    if(ext === 'html' || ext === 'htm'){
+      frame.srcdoc = buildPreviewHtml(fileCache[activePath].content, activePath);
+    } else if(ext === 'md' || ext === 'markdown'){
+      renderMarkdownPreview(fileCache[activePath].content);
+    } else {
+      frame.srcdoc = emptyPreviewDoc(`Vista previa no disponible para archivos ".${ext}". Elegí un archivo .html o .md para verlo renderizado acá.`);
+    }
+  }
+  function togglePreview(forceOpen){
+    previewOpen = typeof forceOpen === 'boolean' ? forceOpen : !previewOpen;
+    $('#previewToggleBtn').classList.toggle('active-icon', previewOpen);
+    $('#workArea').classList.toggle('split', previewOpen);
+    $('#previewWrap').classList.toggle('show', previewOpen);
+    if(previewOpen) updatePreview();
+  }
+  $('#previewToggleBtn').addEventListener('click', ()=>togglePreview());
+  $('#previewCloseBtn').addEventListener('click', ()=>togglePreview(false));
+  $('#previewRefreshBtn').addEventListener('click', updatePreview);
+
+  // ---------- Commit & publish ----------
+  $('#commitBtn').addEventListener('click', async ()=>{
+    if(!currentRepo) return;
+    if(currentRepo.local){ await publishLocalProjectToGithub(); return; }
+    if(!settings.ghToken){ toast('Configurá tu token de GitHub en Ajustes primero.', 'err'); openSettings(); return; }
+    if(!navigator.onLine){ toast('Sin conexión: los cambios se guardaron localmente. Se pueden publicar cuando vuelvas a tener internet.', 'err'); return; }
+    captureActiveEditorContent();
+    const dirtyTabs = openTabs.filter(t=>t.dirty);
+    const deletions = pendingDeletions.slice();
+    const totalOps = dirtyTabs.length + deletions.length;
+    if(!totalOps){ toast('No hay cambios sin publicar.'); return; }
+    const msg = prompt('Mensaje del commit:', `Actualiza ${totalOps} archivo(s) desde Codex Studio`);
+    if(msg === null) return;
+    $('#commitBtn').disabled = true;
+    let ok = 0, fail = 0;
+    for(const t of dirtyTabs){
+      try{ await commitFile(t.path, fileCache[t.path].content, msg); t.dirty = false; ok++; }
+      catch(e){ fail++; toast(`Error publicando ${t.path}: ${e.message}`, 'err'); }
+    }
+    for(const d of deletions){
+      try{ await deleteFileOnGithub(d.path, d.sha, msg); pendingDeletions = pendingDeletions.filter(p=>p.path!==d.path); ok++; }
+      catch(e){ fail++; toast(`Error eliminando ${d.path}: ${e.message}`, 'err'); }
+    }
+    $('#commitBtn').disabled = false;
+    renderTabs(); persistRepoCache();
+    if(ok) toast(`Se publicaron ${ok} cambio(s) en GitHub.`, 'ok');
+  });
+
+  // ---------- Load repo button ----------
+  $('#loadBtn').addEventListener('click', async ()=>{
+    const raw = $('#repoInput').value.trim().replace(/^https?:\/\/github\.com\//,'').replace(/\.git$/,'').replace(/\/$/,'');
+    const parts = raw.split('/');
+    if(parts.length < 2){ toast('Escribí el repo como usuario/repositorio.', 'err'); return; }
+    try{ await loadRepo(parts[0], parts[1]); }
+    catch(e){ toast(e.message, 'err'); }
+  });
+  $('#repoInput').addEventListener('keydown', e=>{ if(e.key==='Enter') $('#loadBtn').click(); });
+
+  // ---------- Invite ----------
+  function openInvite(){
+    if(!currentRepo){ toast('Primero cargá un repositorio.', 'err'); return; }
+    $('#inviteModal').classList.add('show');
+  }
+  $('#inviteBtn').addEventListener('click', openInvite);
+  $('#inviteCancel').addEventListener('click', ()=>$('#inviteModal').classList.remove('show'));
+  $('#inviteSend').addEventListener('click', async ()=>{
+    const user = $('#inviteUserInput').value.trim();
+    const perm = $('#invitePermSelect').value;
+    if(!user){ toast('Escribí un usuario de GitHub.', 'err'); return; }
+    if(!settings.ghToken){ toast('Configurá tu token de GitHub en Ajustes primero.', 'err'); return; }
+    if(!navigator.onLine){ toast('Necesitás conexión para invitar colaboradores.', 'err'); return; }
+    try{
+      await inviteCollaborator(user, perm);
+      toast(`Invitación enviada a ${user}.`, 'ok');
+      $('#inviteModal').classList.remove('show');
+      $('#inviteUserInput').value = '';
+    }catch(e){ toast(e.message, 'err'); }
+  });
+
+  // ---------- Settings ----------
+  function openSettings(){
+    $('#ghTokenInput').value = settings.ghToken || '';
+    $('#geminiKeyInput').value = settings.geminiKey || '';
+    $('#geminiModelInput').value = settings.geminiModel || 'gemini-2.0-flash';
+    $('#settingsModal').classList.add('show');
+  }
+  $('#settingsBtn').addEventListener('click', openSettings);
+  $('#settingsCancel').addEventListener('click', ()=>$('#settingsModal').classList.remove('show'));
+  $('#settingsSave').addEventListener('click', ()=>{
+    settings = {
+      ghToken: $('#ghTokenInput').value.trim(),
+      geminiKey: $('#geminiKeyInput').value.trim(),
+      geminiModel: $('#geminiModelInput').value.trim() || 'gemini-2.0-flash'
+    };
+    store.set('cs_settings', settings);
+    $('#settingsModal').classList.remove('show');
+    toast('Ajustes guardados en este navegador.', 'ok');
+  });
+
+  // ---------- AI (Gemini) panel ----------
+  function addAiMessage(role, html){
+    const el = document.createElement('div');
+    el.className = 'ai-msg ' + role;
+    el.innerHTML = html;
+    $('#aiLog').appendChild(el);
+    $('#aiLog').scrollTop = $('#aiLog').scrollHeight;
+    return el;
+  }
+  function escapeHtml(s){ return s.replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+  async function askGemini(question){
+    if(!settings.geminiKey){ toast('Configurá tu API key de Gemini en Ajustes primero.', 'err'); openSettings(); return; }
+    if(!navigator.onLine){ toast('El asistente de IA necesita conexión a internet.', 'err'); return; }
+    captureActiveEditorContent();
+    const context = activePath && fileCache[activePath]
+      ? `Archivo actual: ${activePath}\n\n\`\`\`\n${fileCache[activePath].content.slice(0,6000)}\n\`\`\`\n\n`
+      : '';
+    addAiMessage('user', escapeHtml(question));
+    const thinkingEl = addAiMessage('model', '<em>Pensando…</em>');
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(settings.geminiModel)}:generateContent?key=${encodeURIComponent(settings.geminiKey)}`;
+    try{
+      const res = await fetch(url, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          contents:[{ role:'user', parts:[{ text: `Sos un asistente de programación integrado en un editor de código web. Respondé en español, de forma breve y directa. Si generás código, poné SOLO el código dentro de un bloque \`\`\`.\n\n${context}Pedido del usuario: ${question}` }]}]
+        })
+      });
+      if(!res.ok){
+        let m=''; try{ m=(await res.json()).error.message; }catch(e){}
+        throw new Error(`Gemini ${res.status}: ${m||res.statusText}`);
+      }
+      const data = await res.json();
+      const text = (data.candidates && data.candidates[0] && data.candidates[0].content.parts.map(p=>p.text).join('')) || '(sin respuesta)';
+      const codeMatch = text.match(/```[a-zA-Z]*\n([\s\S]*?)```/);
+      let html = escapeHtml(text).replace(/\n/g,'<br>');
+      thinkingEl.innerHTML = html;
+      if(codeMatch && activePath){
+        const btn = document.createElement('button');
+        btn.className = 'btn primary insert-btn';
+        btn.textContent = 'Insertar en el editor';
+        btn.addEventListener('click', ()=>{
+          if(editor){ editor.executeEdits('ai-insert', [{ range: editor.getSelection() || editor.getModel().getFullModelRange(), text: codeMatch[1] }]); toast('Código insertado.', 'ok'); }
+        });
+        thinkingEl.appendChild(btn);
+      }
+    }catch(e){
+      thinkingEl.innerHTML = escapeHtml(e.message);
+      thinkingEl.style.borderColor = 'var(--danger)';
+    }
+  }
+  $('#aiAskBtn').addEventListener('click', ()=>{
+    const q = $('#aiInput').value.trim();
+    if(!q) return;
+    $('#aiInput').value = '';
+    askGemini(q);
+  });
+  $('#aiInput').addEventListener('keydown', e=>{ if(e.key==='Enter' && (e.metaKey||e.ctrlKey)) $('#aiAskBtn').click(); });
+  $('#aiClearBtn').addEventListener('click', ()=>{ $('#aiLog').innerHTML=''; });
+
+  // ---------- Activity bar / sidebar toggle (mobile) ----------
+  $$('.abtn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      $$('.abtn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      const panel = btn.dataset.panel;
+      $('#filesView').classList.toggle('hidden', panel!=='files');
+      $('#aiPanel').classList.toggle('hidden', panel!=='ai');
+      openSidebarMobile();
+    });
+  });
+  function openSidebarMobile(){
+    if(window.innerWidth <= 820){ $('#sidebar').classList.remove('hidden'); $('#scrim').classList.add('show'); }
+  }
+  $('#scrim').addEventListener('click', ()=>{ $('#sidebar').classList.add('hidden'); $('#scrim').classList.remove('show'); });
+  // Ensure mobile starts with sidebar hidden, desktop shown
+  function applyResponsiveDefaults(){
+    if(window.innerWidth <= 820){ $('#sidebar').classList.add('hidden'); }
+    else { $('#sidebar').classList.remove('hidden'); $('#scrim').classList.remove('show'); }
+  }
+  window.addEventListener('resize', applyResponsiveDefaults);
+  applyResponsiveDefaults();
+
+  // ---------- Install / PWA ----------
+  let deferredPrompt = null;
+  window.addEventListener('beforeinstallprompt', (e)=>{
+    e.preventDefault(); deferredPrompt = e; $('#installBtn').style.display = '';
+  });
+  $('#installBtn').addEventListener('click', async ()=>{
+    if(!deferredPrompt) return;
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    deferredPrompt = null; $('#installBtn').style.display = 'none';
+  });
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', ()=>{
+      navigator.serviceWorker.register('sw.js').catch(()=>{ /* offline caching unavailable, app still works */ });
+    });
+  }
+
+  // ---------- Init ----------
+  refreshOnlineStatus();
+  if(!settings.ghToken || !settings.geminiKey){
+    setTimeout(()=>toast('Abrí Ajustes (⚙) para cargar tu token de GitHub y tu API key de Gemini.'), 600);
+  }
+})();
+</script>
+</body>
+</html>

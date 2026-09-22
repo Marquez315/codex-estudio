@@ -1,0 +1,29 @@
+{
+  "name": "Codex Studio — Editor web con GitHub e IA",
+  "short_name": "Codex Studio",
+  "description": "Editor de código en el navegador, inspirado en VSCodium, con integración de GitHub, invitación de colaboradores, asistencia de IA vía Gemini y soporte offline.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#111213",
+  "theme_color": "#161616",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23161616'/%3E%3Cpath d='M20 16 L44 32 L20 48' stroke='%232ec4b6' stroke-width='6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
