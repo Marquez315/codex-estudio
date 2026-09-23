@@ -307,6 +307,7 @@
   <button class="btn primary" id="commitBtn" disabled>Guardar y publicar</button>
   <button class="btn" id="inviteBtn">Invitar colaborador</button>
   <div class="spacer"></div>
+  <button class="btn ghost icon" id="downloadProjectBtn" title="Descargar proyecto (.zip) para trabajar offline en tu PC">💾</button>
   <button class="btn ghost icon" id="installBtn" title="Instalar app">⇩</button>
   <button class="btn ghost icon" id="guideBtn" title="Guía de uso para principiantes">❓</button>
   <button class="btn ghost icon" id="settingsBtn" title="Ajustes">⚙</button>
@@ -500,7 +501,14 @@
     </details>
 
     <details class="guide-item">
-      <summary>8. Consejos para trabajar desde el celular</summary>
+      <summary>8. Descargar el proyecto para trabajar sin internet</summary>
+      <p>El botón 💾 de arriba genera y descarga un archivo <code>.zip</code> con todos los archivos del proyecto actual, tal como están en este momento (incluye los cambios sin publicar). Se arma en tu propio navegador, sin subir nada a ningún servidor.</p>
+      <p>Descomprimí ese <code>.zip</code> en tu PC y vas a tener los archivos reales (HTML, CSS, JS, etc.) para abrirlos con cualquier editor o navegador, sin necesidad de conexión ni de esta app.</p>
+      <p>Si el proyecto viene de un repositorio de GitHub y hay archivos que todavía no abriste ni cargaste (y estás sin conexión), esos van a quedar afuera del .zip; la app te avisa cuáles quedaron pendientes.</p>
+    </details>
+
+    <details class="guide-item">
+      <summary>9. Consejos para trabajar desde el celular</summary>
       <p>El texto del editor ajusta el renglón automáticamente para no tener que desplazar hacia los costados. Usá el ícono de archivo (📄) o de IA arriba a la izquierda para abrir el panel lateral, y tocá afuera del panel para cerrarlo. Girar el celular en horizontal te da más espacio para programar cómodamente.</p>
     </details>
 
@@ -1380,6 +1388,128 @@
   $('#guideBtn').addEventListener('click', openGuide);
   $('#guideClose').addEventListener('click', closeGuide);
   $('#guideModal').addEventListener('click', (e)=>{ if(e.target.id==='guideModal') closeGuide(); });
+
+  // ---------- Descargar proyecto (.zip) para trabajar offline ----------
+  // Arma un .zip 100% en el navegador (sin librerías externas ni conexión) con
+  // todos los archivos del proyecto actual, para que se puedan seguir usando
+  // en la computadora sin internet y sin esta app.
+  const ZIP_CRC_TABLE = (()=>{
+    const table = new Uint32Array(256);
+    for(let n=0;n<256;n++){
+      let c = n;
+      for(let k=0;k<8;k++){ c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); }
+      table[n] = c >>> 0;
+    }
+    return table;
+  })();
+  function zipCrc32(bytes){
+    let crc = 0xFFFFFFFF;
+    for(let i=0;i<bytes.length;i++){ crc = ZIP_CRC_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8); }
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+  function zipDosDateTime(date){
+    const time = ((date.getHours() & 0x1F) << 11) | ((date.getMinutes() & 0x3F) << 5) | ((date.getSeconds() >> 1) & 0x1F);
+    const dt = (((date.getFullYear()-1980) & 0x7F) << 9) | (((date.getMonth()+1) & 0xF) << 5) | (date.getDate() & 0x1F);
+    return { time, dt };
+  }
+  function zipU16(arr, off, val){ arr[off]=val&0xFF; arr[off+1]=(val>>>8)&0xFF; }
+  function zipU32(arr, off, val){ arr[off]=val&0xFF; arr[off+1]=(val>>>8)&0xFF; arr[off+2]=(val>>>16)&0xFF; arr[off+3]=(val>>>24)&0xFF; }
+
+  function buildZip(files){
+    // files: [{ name:'ruta/archivo.ext', data: Uint8Array }]
+    const encoder = new TextEncoder();
+    const { time, dt } = zipDosDateTime(new Date());
+    const localParts = [];
+    const centralParts = [];
+    let offset = 0;
+
+    files.forEach(f=>{
+      const nameBytes = encoder.encode(f.name);
+      const data = f.data;
+      const crc = zipCrc32(data);
+
+      const local = new Uint8Array(30 + nameBytes.length);
+      zipU32(local, 0, 0x04034b50);
+      zipU16(local, 4, 20);      // versión necesaria
+      zipU16(local, 6, 0x0800);  // flags: nombres en UTF-8
+      zipU16(local, 8, 0);       // método: sin comprimir (store)
+      zipU16(local, 10, time);
+      zipU16(local, 12, dt);
+      zipU32(local, 14, crc);
+      zipU32(local, 18, data.length);
+      zipU32(local, 22, data.length);
+      zipU16(local, 26, nameBytes.length);
+      zipU16(local, 28, 0);
+      local.set(nameBytes, 30);
+      localParts.push(local, data);
+
+      const central = new Uint8Array(46 + nameBytes.length);
+      zipU32(central, 0, 0x02014b50);
+      zipU16(central, 4, 20);
+      zipU16(central, 6, 20);
+      zipU16(central, 8, 0x0800);
+      zipU16(central, 10, 0);
+      zipU16(central, 12, time);
+      zipU16(central, 14, dt);
+      zipU32(central, 16, crc);
+      zipU32(central, 20, data.length);
+      zipU32(central, 24, data.length);
+      zipU16(central, 28, nameBytes.length);
+      zipU32(central, 42, offset);
+      central.set(nameBytes, 46);
+      centralParts.push(central);
+
+      offset += local.length + data.length;
+    });
+
+    const centralStart = offset;
+    const centralSize = centralParts.reduce((sum,c)=>sum+c.length, 0);
+    const eocd = new Uint8Array(22);
+    zipU32(eocd, 0, 0x06054b50);
+    zipU16(eocd, 8, files.length);
+    zipU16(eocd, 10, files.length);
+    zipU32(eocd, 12, centralSize);
+    zipU32(eocd, 16, centralStart);
+
+    return new Blob([...localParts, ...centralParts, eocd], { type:'application/zip' });
+  }
+
+  async function downloadProjectAsZip(){
+    if(!fileTree.length){ toast('Este proyecto todavía no tiene archivos para descargar.', 'err'); return; }
+    captureActiveEditorContent();
+    const btn = $('#downloadProjectBtn');
+    btn.disabled = true;
+    toast('Preparando el .zip del proyecto…');
+    const encoder = new TextEncoder();
+    const files = [];
+    const skipped = [];
+    for(const f of fileTree){
+      try{
+        const entry = await fetchFileContent(f.path);
+        files.push({ name: f.path, data: encoder.encode(entry.content) });
+      }catch(e){
+        skipped.push(f.path);
+      }
+    }
+    btn.disabled = false;
+    if(!files.length){
+      toast('No se pudo descargar ningún archivo (revisá tu conexión y volvé a intentar).', 'err');
+      return;
+    }
+    const blob = buildZip(files);
+    const url = URL.createObjectURL(blob);
+    const projectName = ((currentRepo && currentRepo.name) || 'proyecto').replace(/[^a-zA-Z0-9._-]+/g,'-') || 'proyecto';
+    const a = document.createElement('a');
+    a.href = url; a.download = `${projectName}.zip`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 4000);
+    if(skipped.length){
+      toast(`Se descargó ${projectName}.zip con ${files.length} archivo(s). ${skipped.length} quedaron afuera por falta de conexión: ${skipped.slice(0,3).join(', ')}${skipped.length>3?'…':''}`, 'err');
+    } else {
+      toast(`Proyecto descargado como ${projectName}.zip (${files.length} archivo(s)). Descomprimilo para trabajar sin internet.`, 'ok');
+    }
+  }
+  $('#downloadProjectBtn').addEventListener('click', downloadProjectAsZip);
 
   // ---------- Install / PWA ----------
   // El botón de instalar dispara el instalador nativo del navegador (Chrome/Edge,
