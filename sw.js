@@ -1,5 +1,5 @@
 // Codex Studio — service worker: cachea el shell de la app para uso offline.
-// Los datos de GitHub/Gemini nunca se cachean acá (los maneja localStorage en index.html).
+// Los datos de GitHub/IA nunca se cachean acá (los maneja localStorage en index.html).
 const CACHE_NAME = 'codex-studio-shell-v1';
 const SHELL_FILES = [
   './',
@@ -29,7 +29,7 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
 
-  // Never intercept API calls (GitHub, Gemini) — they must always hit the network
+  // Never intercept API calls (GitHub, AI providers) — they must always hit the network
   // and fail loudly offline so the app can show a proper offline message.
   if (url.origin !== self.location.origin) {
     return;

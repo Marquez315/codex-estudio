@@ -1,7 +1,7 @@
 {
   "name": "Codex Studio — Editor web con GitHub e IA",
   "short_name": "Codex Studio",
-  "description": "Editor de código en el navegador, inspirado en VSCodium, con integración de GitHub, invitación de colaboradores, asistencia de IA vía Gemini y soporte offline.",
+  "description": "Editor de código en el navegador, inspirado en VSCodium, con integración de GitHub, invitación de colaboradores, asistencia de IA con Groq (100% gratis), soporte offline e instalable en celular y computadora. App creada con fines educativos.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
